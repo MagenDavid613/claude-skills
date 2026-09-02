@@ -35,16 +35,24 @@ const MODELS = {
 };
 
 // ---------------------------------------------------------------- key ----
+// A value equal to the literal placeholder from .env.example does not count
+// as configured, so an untouched .env fails clearly instead of sending
+// "your-key-here" to the API as a real key.
+const PLACEHOLDER = "your-key-here";
 // Checks, in order: cwd walking up to the filesystem root (so a build
 // project's own .env wins), then the skill's own directory (..HERE/..), since
 // that is where the install instructions put .env when there is no separate
 // build project yet.
 function findEnv(varName) {
+  const re = new RegExp(`^\\s*${varName}\\s*=\\s*(\\S+)`, "m");
   const tryDir = (start) => {
     let dir = path.resolve(start);
     for (;;) {
       const p = path.join(dir, ".env");
-      if (fs.existsSync(p) && new RegExp(`^\\s*${varName}\\s*=\\s*\\S+`, "m").test(fs.readFileSync(p, "utf8"))) return p;
+      if (fs.existsSync(p)) {
+        const m = fs.readFileSync(p, "utf8").match(re);
+        if (m && m[1].replace(/^["']|["']$/g, "") !== PLACEHOLDER) return p;
+      }
       const up = path.dirname(dir);
       if (up === dir) return null;
       dir = up;
@@ -53,7 +61,7 @@ function findEnv(varName) {
   return tryDir(process.cwd()) || tryDir(path.join(HERE, "..")) || null;
 }
 function loadKey() {
-  if (process.env.KIE_AI_API_KEY) return process.env.KIE_AI_API_KEY;
+  if (process.env.KIE_AI_API_KEY && process.env.KIE_AI_API_KEY !== PLACEHOLDER) return process.env.KIE_AI_API_KEY;
   const envPath = findEnv("KIE_AI_API_KEY");
   if (!envPath) throw new Error("KIE_AI_API_KEY not set, and no .env holding it found walking up from " + process.cwd() + " or in the skill directory");
   for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
