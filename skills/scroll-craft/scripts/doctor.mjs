@@ -122,17 +122,27 @@ add("verify", "Chrome", Boolean(chrome), chrome || "not found",
   "Install Chrome, or set SCROLLCRAFT_CHROME to an executable.");
 
 // --------------------------------------------------------- provider key ----
+// A value equal to the literal placeholder from .env.example does not count
+// as configured — otherwise a freshly-copied .env reports "ok" for a key
+// nobody has actually set yet.
+const PLACEHOLDER = "your-key-here";
 function findKey(varName) {
-  if (process.env[varName]) return "env";
-  let dir = process.cwd();
-  for (let i = 0; i < 8; i++) {
-    const p = path.join(dir, ".env");
-    if (fs.existsSync(p) && new RegExp(`^\\s*${varName}\\s*=\\s*\\S+`, "m").test(fs.readFileSync(p, "utf8"))) return p;
-    const up = path.dirname(dir);
-    if (up === dir) break;
-    dir = up;
-  }
-  return null;
+  if (process.env[varName] && process.env[varName] !== PLACEHOLDER) return "env";
+  const re = new RegExp(`^\\s*${varName}\\s*=\\s*(\\S+)`, "m");
+  const tryDir = (start) => {
+    let dir = path.resolve(start);
+    for (;;) {
+      const p = path.join(dir, ".env");
+      if (fs.existsSync(p)) {
+        const m = fs.readFileSync(p, "utf8").match(re);
+        if (m && m[1].replace(/^["']|["']$/g, "") !== PLACEHOLDER) return p;
+      }
+      const up = path.dirname(dir);
+      if (up === dir) return null;
+      dir = up;
+    }
+  };
+  return tryDir(process.cwd()) || tryDir(path.join(HERE, "..")) || null;
 }
 const magnificWhere = findKey("MAGNIFIC_API_KEY");
 const kieWhere = findKey("KIE_AI_API_KEY");

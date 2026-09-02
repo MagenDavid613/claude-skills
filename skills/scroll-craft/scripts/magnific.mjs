@@ -32,7 +32,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const API = "https://api.magnific.com";
 
 const ENDPOINTS = {
@@ -41,21 +43,27 @@ const ENDPOINTS = {
 };
 
 // ---------------------------------------------------------------- key ----
-function findEnv(start) {
-  let dir = path.resolve(start);
-  for (let i = 0; i < 8; i++) {
-    const p = path.join(dir, ".env");
-    if (fs.existsSync(p)) return p;
-    const up = path.dirname(dir);
-    if (up === dir) break;
-    dir = up;
-  }
-  return null;
+// Checks, in order: cwd walking up to the filesystem root (so a build
+// project's own .env wins), then the skill's own directory (..HERE/..), since
+// that is where the install instructions put .env when there is no separate
+// build project yet.
+function findEnv(varName) {
+  const tryDir = (start) => {
+    let dir = path.resolve(start);
+    for (;;) {
+      const p = path.join(dir, ".env");
+      if (fs.existsSync(p) && new RegExp(`^\\s*${varName}\\s*=\\s*\\S+`, "m").test(fs.readFileSync(p, "utf8"))) return p;
+      const up = path.dirname(dir);
+      if (up === dir) return null;
+      dir = up;
+    }
+  };
+  return tryDir(process.cwd()) || tryDir(path.join(HERE, "..")) || null;
 }
 function loadKey() {
   if (process.env.MAGNIFIC_API_KEY) return process.env.MAGNIFIC_API_KEY;
-  const envPath = findEnv(process.cwd());
-  if (!envPath) throw new Error("MAGNIFIC_API_KEY not set and no .env found walking up from " + process.cwd());
+  const envPath = findEnv("MAGNIFIC_API_KEY");
+  if (!envPath) throw new Error("MAGNIFIC_API_KEY not set, and no .env holding it found walking up from " + process.cwd() + " or in the skill directory");
   for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
     const m = line.match(/^\s*MAGNIFIC_API_KEY\s*=\s*(.+?)\s*$/);
     if (m) return m[1].replace(/^["']|["']$/g, "");
